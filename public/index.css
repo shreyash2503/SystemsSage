@@ -1,0 +1,27 @@
+:root {
+    --border-rad-lg: 15px;
+    --light-text: #fefefe;
+}
+
+*,
+*::before,
+*::after {
+    box-sizing: border-box;
+}
+
+html,
+body {
+    margin: 0;
+    padding: 0;
+    font-family: 'Poppins';
+}
+
+main {
+    background-color: slategrey;
+    background-size: cover;
+    background-repeat: no-repeat;
+    height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
