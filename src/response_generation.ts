@@ -31,6 +31,8 @@ const llm = new ChatGoogleGenerativeAI({
   maxRetries: 2,
 });
 
+const convHistory: string[] = [];
+
 const vectorStore = new SupabaseVectorStore(embeddings, {
   client,
   tableName: "documents", // Name of the table in supabase where the documents are stored
@@ -41,7 +43,7 @@ const retriever = vectorStore.asRetriever();
 
 function generateStandaloneQuestionPrompt() {
   const standaloneQuestion =
-    "Given a user question, generate a suitable standalone question from it. The user question is: {question}";
+    "Given a user question, generate a suitable standalone question from it. The user question is: {question} .\n The previous conversation history with the user is {convHistory}, Make sure to use the context from the conversation history to generate a suitable standalone question";
   const standalonePrompt = PromptTemplate.fromTemplate(standaloneQuestion);
   return standalonePrompt;
 }
@@ -63,7 +65,8 @@ function retrieveDocumentsFromVectorStore() {
 
 function generateResponsePrompt() {
   const answerTemplate = `
-        You are a helpful and enthusiastic support bot for helping students with system design questions based on the context provided. Try to find the answer in the context. If you really don't know the answer, say "I'm sorry, I don't know the answer to that". Don't try to make up the answer. Always speak as if you were speaking to a friend
+        You are a helpful and enthusiastic support bot for helping students with system design questions based on the context provided and previous conversation history with the student. Make sure to use the conversation history along with the context to generate the answer. Try to find the answer in the context. If you really don't know the answer, say "I'm sorry, I don't know the answer to that". Don't try to make up the answer. Always speak as if you were speaking to a friend.
+        The previous conversation history with the user is {convHistory}
         context : {context}
         question : {question}
         answer : 
@@ -80,15 +83,30 @@ function createPipeline() {
     },
     {
       question: ({ originalInput }) => originalInput.question,
+      convHistory: ({ originalInput }) => originalInput.convHistory,
     },
     {
       context: retrieveDocumentsFromVectorStore(),
+      //* Here we can use Something like context : prevResult => prevResult.question to access the output of the previous operation
       //! Instead of using pipes we can also use nested RunnableSequence to create a pipeline
       //! RunnableSequence is used instead of pipe to create a pipeline so that input from the first operation can be available until the last operation
       question: ({ question }) => question,
+      convHistory: ({ convHistory }) => convHistory,
     },
     generateResponsePrompt(),
   ]);
+}
+
+function formatConvHistory(messages: string[]) {
+  return messages
+    .map((message, index) => {
+      if (index % 2 === 0) {
+        return `Human: ${message}`;
+      } else {
+        return `AI: ${message}`;
+      }
+    })
+    .join("\n");
 }
 
 async function generateResponse(question: string) {
@@ -97,7 +115,12 @@ async function generateResponse(question: string) {
   //   console.log(response);
 
   const pipeline = createPipeline();
-  const response = await pipeline.invoke({ question });
+  const response = await pipeline.invoke({
+    question,
+    convHistory: formatConvHistory(convHistory),
+  });
+  convHistory.push(question);
+  convHistory.push(response);
   console.log(response);
 }
 
